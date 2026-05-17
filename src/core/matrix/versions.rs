@@ -52,5 +52,7 @@ pub fn unstable_features() -> BTreeMap<String, bool> {
 		("org.continuwuity.msc4484.unstable".to_owned(), true),
 		// stripped state over federation (https://github.com/matrix-org/matrix-spec-proposals/pull/4560)
 		("org.continuwuity.msc4560".to_owned(), true),
+		/* delayed events (https://github.com/matrix-org/matrix-spec-proposals/pull/4140) */
+		("org.matrix.msc4140".to_owned(), true),
 	])
 }
