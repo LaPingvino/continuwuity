@@ -10,7 +10,7 @@ use ruma::{
 	OwnedEventId, api::client::message::send_message_event, events::MessageLikeEventType,
 };
 use serde::Deserialize;
-use serde_json::from_str;
+use serde_json::value::RawValue;
 
 use crate::{Ruma, client_ip::ClientIp};
 
@@ -40,19 +40,7 @@ pub(crate) async fn send_message_event_route(
 		.update_device_last_seen(sender_user, sender_device, client_ip)
 		.await;
 
-	// Forbid m.room.encrypted if encryption is disabled
-	if MessageLikeEventType::RoomEncrypted == body.event_type && !services.config.allow_encryption
-	{
-		return Err!(Request(Forbidden("Encryption has been disabled")));
-	}
-
 	let state_lock = services.rooms.state.mutex.lock(body.room_id.as_str()).await;
-
-	if body.event_type == MessageLikeEventType::CallInvite
-		&& services.rooms.directory.is_public_room(&body.room_id).await
-	{
-		return Err!(Request(Forbidden("Room call invites are not allowed in public rooms")));
-	}
 
 	// Check if this is a new transaction id
 	if let Ok(response) = services
@@ -75,47 +63,42 @@ pub(crate) async fn send_message_event_route(
 		return Ok(send_message_event::v3::Response::new(event_id));
 	}
 
-	let mut unsigned = BTreeMap::new();
-	unsigned.insert("transaction_id".to_owned(), body.txn_id.to_string().into());
-
-	let content = from_str(body.body.body.json().get())
+	let content: Box<RawValue> = serde_json::from_str(body.body.body.json().get())
 		.map_err(|e| err!(Request(BadJson("Invalid JSON body: {e}"))))?;
+
 	let redacts = if body.body.event_type == MessageLikeEventType::RoomRedaction {
-		from_str::<MaybeRedaction>(body.body.body.json().get())
+		serde_json::from_str::<MaybeRedaction>(body.body.body.json().get())
 			.ok()
 			.and_then(|r| r.redacts)
 	} else {
 		None
 	};
 
+	let timestamp = if body.identity.is_appservice()
+		|| services.admin.user_is_admin(sender_user).await
+	{
+		body.timestamp
+	} else {
+		None
+	};
+
+	let mut unsigned = BTreeMap::new();
+	unsigned.insert("transaction_id".to_owned(), body.txn_id.to_string().into());
+
+	let partial_pdu = PartialPdu {
+		event_type: body.event_type.to_string().into(),
+		content,
+		timestamp,
+		unsigned: Some(unsigned),
+		sticky: body.sticky_duration_ms.map(sticky::object),
+		redacts,
+		..Default::default()
+	};
+
 	let event_id = services
 		.rooms
 		.timeline
-		.build_and_append_pdu(
-			PartialPdu {
-				event_type: body.event_type.clone().into(),
-				content,
-				sticky: services
-					.config
-					.allow_sticky_events
-					.then_some(body.sticky_duration_ms)
-					.flatten()
-					.map(sticky::object),
-				unsigned: Some(unsigned),
-				timestamp: if body.identity.is_appservice()
-					|| services.admin.user_is_admin(sender_user).await
-				{
-					body.timestamp
-				} else {
-					None
-				},
-				redacts,
-				..Default::default()
-			},
-			sender_user,
-			Some(&body.room_id),
-			&state_lock,
-		)
+		.send_timeline_event(sender_user, &body.room_id, &state_lock, partial_pdu)
 		.await?;
 
 	services.transactions.add_client_txnid(
