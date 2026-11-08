@@ -316,14 +316,13 @@ impl super::Service {
 
 		let insert_lock = self.mutex_insert.lock(room_id).await;
 
-		let count1 = self.services.globals.next_count().unwrap();
-
-		let count2 = PduCount::Normal(self.services.globals.next_count().unwrap());
-		let pdu_id: RawPduId = PduId { shortroomid, shorteventid: count2 }.into();
+		let count = self.services.globals.next_count().unwrap();
+		let pdu_count = PduCount::Normal(count);
+		let pdu_id: RawPduId = PduId { shortroomid, shorteventid: pdu_count }.into();
 
 		// Insert pdu
 		self.db
-			.append_pdu(&pdu_id, pdu, room_id, &pdu_json, count2)
+			.append_pdu(&pdu_id, pdu, room_id, &pdu_json, pdu_count)
 			.await;
 		self.progress_extremities(pdu)
 			.await
@@ -343,18 +342,20 @@ impl super::Service {
 						);
 					})
 					.ok(),
-				self.aggregate_relations(pdu, count2),
+				self.aggregate_relations(pdu, pdu_count),
 			);
 		}
 
-		self.services
-			.read_receipt
-			.private_read_set(room_id, pdu.sender(), pdu.event_id(), count1)
-			.await;
+		if self.services.globals.user_is_local(pdu.sender()) {
+			self.services
+				.read_receipt
+				.private_read_set(room_id, pdu.sender(), pdu.event_id(), count)
+				.await;
 
-		self.services
-			.user
-			.reset_notification_counts(pdu.sender(), room_id);
+			self.services
+				.user
+				.reset_notification_counts(pdu.sender(), room_id);
+		}
 
 		self.send_to_interested_appservices(pdu, &pdu_id, room_id)
 			.await;
