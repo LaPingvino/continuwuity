@@ -154,9 +154,9 @@ impl Service {
 
 		let data = match content_type {
 			| html if html.starts_with("text/html") => self.download_html(url).await?,
-			| img if img.starts_with("image/") => self.download_image(url.as_str()).await?,
-			| video if video.starts_with("video/") => self.download_video(url.as_str()).await?,
-			| audio if audio.starts_with("audio/") => self.download_audio(url.as_str()).await?,
+			| img if img.starts_with("image/") => self.download_image(url.clone()).await?,
+			| video if video.starts_with("video/") => self.download_video(url.clone()).await?,
+			| audio if audio.starts_with("audio/") => self.download_audio(url.clone()).await?,
 			| other => return Err!(Request(Unknown("Unsupported Content-Type: {other}"))),
 		};
 
@@ -166,7 +166,7 @@ impl Service {
 	}
 
 	#[cfg(feature = "url_preview")]
-	pub async fn download_image(&self, url: &str) -> Result<UrlPreviewData> {
+	pub async fn download_image(&self, url: Url) -> Result<UrlPreviewData> {
 		use conduwuit::utils::random_string;
 		use image::ImageReader;
 
@@ -218,7 +218,7 @@ impl Service {
 
 	#[cfg(feature = "url_preview")]
 	#[tracing::instrument(skip(self))]
-	pub async fn download_video(&self, url: &str) -> Result<UrlPreviewData> {
+	pub async fn download_video(&self, url: Url) -> Result<UrlPreviewData> {
 		let mut preview_data = UrlPreviewData::default();
 
 		if self.services.globals.url_preview_allow_audio_video() {
@@ -232,7 +232,7 @@ impl Service {
 
 	#[cfg(feature = "url_preview")]
 	#[tracing::instrument(skip(self))]
-	pub async fn download_audio(&self, url: &str) -> Result<UrlPreviewData> {
+	pub async fn download_audio(&self, url: Url) -> Result<UrlPreviewData> {
 		let mut preview_data = UrlPreviewData::default();
 
 		if self.services.globals.url_preview_allow_audio_video() {
@@ -245,7 +245,7 @@ impl Service {
 	}
 
 	#[tracing::instrument(skip(self))]
-	pub async fn download_media(&self, url: &str) -> Result<(OwnedMxcUri, usize)> {
+	pub async fn download_media(&self, url: Url) -> Result<(OwnedMxcUri, usize)> {
 		use conduwuit::utils::random_string;
 		use http::header::CONTENT_TYPE;
 
@@ -329,18 +329,18 @@ impl Service {
 		let mut preview_data = UrlPreviewData::from(&html.opengraph);
 		debug!(parsed=?preview_data, deserialised=?html.opengraph, "Parsed opengraph data");
 
-		if let Some(obj) = html.opengraph.images.first() {
-			debug_info!(asset_url=%obj.url, "Downloading preview image");
+		if let Some(asset_url) = html
+			.opengraph
+			.images
+			.first()
+			.and_then(|o| url.join(&o.url).ok())
+		{
+			debug_info!(%asset_url, "Downloading preview image");
 			if let Ok(image_data) = self
-				.download_image(
-					url.join(&obj.url)
-						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
-						.as_ref(),
-				)
+				.download_image(asset_url)
 				.await
-				.inspect_err(
-					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview image"),
-				) {
+				.inspect_err(|e| debug_warn!(error=?e, "Could not download URL preview image"))
+			{
 				preview_data.image = image_data.image;
 				preview_data.image_size = image_data.image_size;
 				// Prioritise what the top-level site specified, falling back to
@@ -351,35 +351,35 @@ impl Service {
 			}
 		}
 
-		if let Some(obj) = html.opengraph.videos.first() {
-			debug_info!(asset_url=%obj.url, "Downloading preview video");
+		if let Some(asset_url) = html
+			.opengraph
+			.videos
+			.first()
+			.and_then(|o| url.join(&o.url).ok())
+		{
+			debug_info!(asset_url=%asset_url, "Downloading preview video");
 			if let Ok(video_data) = self
-				.download_video(
-					url.join(&obj.url)
-						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
-						.as_ref(),
-				)
+				.download_video(asset_url)
 				.await
-				.inspect_err(
-					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview video"),
-				) {
+				.inspect_err(|e| debug_warn!(error=?e, "Could not download URL preview video"))
+			{
 				preview_data.video = video_data.video;
 				preview_data.video_size = video_data.video_size;
 			}
 		}
 
-		if let Some(obj) = html.opengraph.audios.first() {
-			debug_info!(asset_url=%obj.url, "Downloading URL preview audio");
+		if let Some(asset_url) = html
+			.opengraph
+			.audios
+			.first()
+			.and_then(|o| url.join(&o.url).ok())
+		{
+			debug_info!(%asset_url, "Downloading URL preview audio");
 			if let Ok(audio_data) = self
-				.download_audio(
-					url.join(&obj.url)
-						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
-						.as_ref(),
-				)
+				.download_audio(asset_url)
 				.await
-				.inspect_err(
-					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview audio"),
-				) {
+				.inspect_err(|e| debug_warn!(error=?e, "Could not download URL preview audio"))
+			{
 				preview_data.audio = audio_data.audio;
 				preview_data.audio_size = audio_data.audio_size;
 			}
