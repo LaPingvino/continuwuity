@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use axum::extract::State;
 use conduwuit::{
-	Err, Result, debug_info, err, info,
+	Err, Result, debug_info, err,
 	utils::{self, content_disposition::make_content_disposition, math::ruma_from_usize},
 };
 use conduwuit_core::error;

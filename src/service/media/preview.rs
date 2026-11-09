@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 #[cfg(feature = "url_preview")]
 use conduwuit::utils::response::LimitReadExt;
-use conduwuit::{Err, Result, debug, debug_info, debug_warn, err, info};
+use conduwuit::{Err, Result, debug, debug_info, debug_warn, err};
 use ipaddress::IPAddress;
 use lettre::message::header::ContentType;
 #[cfg(feature = "url_preview")]
@@ -153,7 +153,7 @@ impl Service {
 			.map_err(|e| err!(Request(Unknown("Unknown or invalid Content-Type header: {e}"))))?;
 
 		let data = match content_type {
-			| html if html.starts_with("text/html") => self.download_html(url.as_str()).await?,
+			| html if html.starts_with("text/html") => self.download_html(url).await?,
 			| img if img.starts_with("image/") => self.download_image(url.as_str()).await?,
 			| video if video.starts_with("video/") => self.download_video(url.as_str()).await?,
 			| audio if audio.starts_with("audio/") => self.download_audio(url.as_str()).await?,
@@ -303,12 +303,12 @@ impl Service {
 
 	#[cfg(feature = "url_preview")]
 	#[tracing::instrument(skip(self))]
-	async fn download_html(&self, url: &str) -> Result<UrlPreviewData> {
+	async fn download_html(&self, url: &Url) -> Result<UrlPreviewData> {
 		use webpage::HTML;
 
 		let client = &self.services.client.url_preview;
 		let body = client
-			.get(url)
+			.get(url.as_str())
 			.send()
 			.await?
 			.limit_read_text(
@@ -320,7 +320,7 @@ impl Service {
 					.expect("u64 should fit in usize"),
 			)
 			.await?;
-		let Ok(html) = HTML::from_string(body.clone(), Some(url.to_owned()))
+		let Ok(html) = HTML::from_string(body.clone(), Some(url.to_string()))
 			.inspect_err(|e| debug!(error=?e, "Failed to parse HTML data"))
 		else {
 			return Err!(Request(Unknown("Failed to parse HTML")));
@@ -331,9 +331,16 @@ impl Service {
 
 		if let Some(obj) = html.opengraph.images.first() {
 			debug_info!(asset_url=%obj.url, "Downloading preview image");
-			if let Ok(image_data) = self.download_image(&obj.url).await.inspect_err(
-				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview image"),
-			) {
+			if let Ok(image_data) = self
+				.download_image(
+					url.join(&obj.url)
+						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
+						.as_ref(),
+				)
+				.await
+				.inspect_err(
+					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview image"),
+				) {
 				preview_data.image = image_data.image;
 				preview_data.image_size = image_data.image_size;
 				// Prioritise what the top-level site specified, falling back to
@@ -346,9 +353,16 @@ impl Service {
 
 		if let Some(obj) = html.opengraph.videos.first() {
 			debug_info!(asset_url=%obj.url, "Downloading preview video");
-			if let Ok(video_data) = self.download_video(&obj.url).await.inspect_err(
-				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview video"),
-			) {
+			if let Ok(video_data) = self
+				.download_video(
+					url.join(&obj.url)
+						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
+						.as_ref(),
+				)
+				.await
+				.inspect_err(
+					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview video"),
+				) {
 				preview_data.video = video_data.video;
 				preview_data.video_size = video_data.video_size;
 			}
@@ -356,9 +370,16 @@ impl Service {
 
 		if let Some(obj) = html.opengraph.audios.first() {
 			debug_info!(asset_url=%obj.url, "Downloading URL preview audio");
-			if let Ok(audio_data) = self.download_audio(&obj.url).await.inspect_err(
-				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview audio"),
-			) {
+			if let Ok(audio_data) = self
+				.download_audio(
+					url.join(&obj.url)
+						.map_or_else(|_| obj.url.clone(), |u| u.to_string())
+						.as_ref(),
+				)
+				.await
+				.inspect_err(
+					|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview audio"),
+				) {
 				preview_data.audio = audio_data.audio;
 				preview_data.audio_size = audio_data.audio_size;
 			}
@@ -367,7 +388,7 @@ impl Service {
 		// Provide defaults for some params
 		preview_data.title = preview_data.title.or(html.title);
 		preview_data.description = preview_data.description.or(html.description);
-		preview_data.url = preview_data.url.or_else(|| Some(url.to_owned()));
+		preview_data.url = preview_data.url.or_else(|| Some(url.to_string()));
 
 		// We remove og:image:*, og:video:*, and og:audio:* if their respective
 		// prior-level properties are not present.
