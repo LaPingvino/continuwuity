@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 #[cfg(feature = "url_preview")]
 use conduwuit::utils::response::LimitReadExt;
-use conduwuit::{Err, Result, debug, err, info};
+use conduwuit::{Err, Result, debug, debug_info, debug_warn, err, info};
 use ipaddress::IPAddress;
 use lettre::message::header::ContentType;
 #[cfg(feature = "url_preview")]
@@ -331,9 +331,9 @@ impl Service {
 		debug!(parsed=?preview_data, deserialised=?html.opengraph, "Parsed opengraph data");
 
 		if let Some(obj) = html.opengraph.images.first() {
-			info!(asset_url=%obj.url, "Downloading preview image");
+			debug_info!(asset_url=%obj.url, "Downloading preview image");
 			if let Ok(image_data) = self.download_image(&obj.url).await.inspect_err(
-				|e| info!(error=?e, asset_url=%obj.url, "Could not download URL preview image"),
+				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview image"),
 			) {
 				preview_data.image = image_data.image;
 				preview_data.image_size = image_data.image_size;
@@ -346,9 +346,9 @@ impl Service {
 		}
 
 		if let Some(obj) = html.opengraph.videos.first() {
-			info!(asset_url=%obj.url, "Downloading preview video");
+			debug_info!(asset_url=%obj.url, "Downloading preview video");
 			if let Ok(video_data) = self.download_video(&obj.url).await.inspect_err(
-				|e| info!(error=?e, asset_url=%obj.url, "Could not download URL preview video"),
+				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview video"),
 			) {
 				preview_data.video = video_data.video;
 				preview_data.video_size = video_data.video_size;
@@ -356,9 +356,9 @@ impl Service {
 		}
 
 		if let Some(obj) = html.opengraph.audios.first() {
-			info!(asset_url=%obj.url, "Downloading URL preview audio");
+			debug_info!(asset_url=%obj.url, "Downloading URL preview audio");
 			if let Ok(audio_data) = self.download_audio(&obj.url).await.inspect_err(
-				|e| info!(error=?e, asset_url=%obj.url, "Could not download URL preview audio"),
+				|e| debug_warn!(error=?e, asset_url=%obj.url, "Could not download URL preview audio"),
 			) {
 				preview_data.audio = audio_data.audio;
 				preview_data.audio_size = audio_data.audio_size;
