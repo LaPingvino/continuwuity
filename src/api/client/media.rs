@@ -219,7 +219,7 @@ pub(crate) async fn get_media_preview_route(
 		)));
 	}
 
-	debug_info!("Fetching a URL preview for {url} on behalf of {sender_user}");
+	debug_info!(%url, user=%sender_user, "Fetching a URL preview");
 	let preview = services
 		.media
 		.get_url_preview(&url)
@@ -230,7 +230,7 @@ pub(crate) async fn get_media_preview_route(
 		)
 		.map_err(|error| {
 			err!(Request(Unknown(
-				debug_error!(%sender_user, %url, "Failed to fetch URL preview: {error}")
+				debug_error!(user=%sender_user, %url, "Failed to fetch URL preview: {error}")
 			)))
 		})?;
 
@@ -238,7 +238,7 @@ pub(crate) async fn get_media_preview_route(
 		.map(get_media_preview::v1::Response::from_raw_value)
 		.map_err(|error| {
 			err!(Request(Unknown(
-				debug_error!(%sender_user, %url, "Failed to parse URL preview: {error}")
+				debug_error!(user=%sender_user, %url, "Failed to parse URL preview: {error}")
 			)))
 		})
 }
