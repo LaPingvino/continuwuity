@@ -18,7 +18,6 @@ use serde::Serialize;
 use url::Url;
 
 use super::Service;
-#[cfg(feature = "url_preview")]
 use crate::media::mxc::Mxc;
 
 #[derive(Serialize, Default, Debug)]

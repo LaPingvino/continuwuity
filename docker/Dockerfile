@@ -50,7 +50,7 @@ EOF
 
 # Developer tool versions
 # renovate: datasource=github-releases depName=cargo-bins/cargo-binstall
-ENV BINSTALL_VERSION=1.26.1
+ENV BINSTALL_VERSION=1.26.2
 # renovate: datasource=github-releases depName=psastras/sbom-rs
 ENV CARGO_SBOM_VERSION=0.9.1
 # renovate: datasource=crate depName=lddtree
@@ -192,7 +192,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
             jq -r ".target_directory"))
     mkdir /out/sbin
     PACKAGE=conduwuit
-    CARGO_LOG=debug xx-cargo build --locked --profile ${RUST_PROFILE} \
+    xx-cargo build --locked --profile ${RUST_PROFILE} \
         --no-default-features --features ${CARGO_FEATURES} \
         -p $PACKAGE;
     BINARIES=($(cargo metadata --no-deps --format-version 1 | \
