@@ -432,20 +432,34 @@ impl Service {
 	}
 
 	/// Get a delayed event, scheduled or finalized, with a given ID
-	pub async fn get_delayed_event(&self, delay_id: String) -> Result<DelayedEventData> {
+	/// Only the user who scheduled it gets it; for anyone else it does not exist.
+	pub async fn get_delayed_event(
+		&self,
+		delay_id: String,
+		requester: &UserId,
+	) -> Result<DelayedEventData> {
 		let (scheduled, finalized) = join!(
 			self.db.delayid_scheduleddelayedevent.get(&delay_id),
 			self.db.delayid_finalizeddelayedevent.get(&delay_id)
 		);
 
+		let not_found = || Err!(Request(NotFound("No delayed event with this delay_id was found")));
 		match (scheduled, finalized) {
-			| (_, Ok(event)) => Ok(event
-				.deserialized::<FinalizedDelayedEvent>()?
-				.into_data(delay_id)),
-			| (Ok(event), _) => Ok(event
-				.deserialized::<ScheduledDelayedEvent>()?
-				.into_data(delay_id)),
-			| _ => Err!(Request(NotFound("No delayed event with this delay_id was found"))),
+			| (_, Ok(event)) => {
+				let event = event.deserialized::<FinalizedDelayedEvent>()?;
+				if event.event.user_id != requester {
+					return not_found();
+				}
+				Ok(event.into_data(delay_id))
+			},
+			| (Ok(event), _) => {
+				let event = event.deserialized::<ScheduledDelayedEvent>()?;
+				if event.user_id != requester {
+					return not_found();
+				}
+				Ok(event.into_data(delay_id))
+			},
+			| _ => not_found(),
 		}
 	}
 

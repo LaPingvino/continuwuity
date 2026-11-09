@@ -7,6 +7,26 @@ use service::rooms::delayed_events::ScheduledDelayedEvent;
 
 use crate::{Ruma, client_ip::ClientIp};
 
+/// Refuse the pre-final MSC4140 form: the delay as an `org.matrix.msc4140.delay` query parameter
+/// on the regular `/send` and `/state` endpoints. Those endpoints would otherwise ignore it and
+/// send the event AT ONCE — for MatrixRTC clients on matrix-js-sdk < 45.1 (Element Call ≤ 0.28)
+/// that is their "leave call" event, published the moment they join. An error makes those
+/// clients carry on without delayed events instead.
+pub(crate) fn refuse_legacy_delay_parameter(query: Option<&str>) -> Result<()> {
+	let legacy = query.is_some_and(|q| {
+		q.split('&')
+			.any(|pair| pair.split('=').next() == Some("org.matrix.msc4140.delay"))
+	});
+	if legacy {
+		return Err!(Request(Unrecognized(
+			"Delayed events are scheduled through \
+			 /_matrix/client/unstable/org.matrix.msc4140/rooms/{{roomId}}/delayed_event/... on this \
+			 server, not with the org.matrix.msc4140.delay query parameter."
+		)));
+	}
+	Ok(())
+}
+
 pub(crate) async fn send_delayed_event_route(
 	State(services): State<crate::State>,
 	ClientIp(client_ip): ClientIp,
@@ -85,13 +105,17 @@ pub(crate) async fn get_delayed_event_route(
 	State(services): State<crate::State>,
 	Ruma {
 		body: delayed_events::get_delayed_event::unstable::Request { delay_id, .. },
+		identity,
 		..
 	}: Ruma<delayed_events::get_delayed_event::unstable::Request>,
 ) -> Result<delayed_events::get_delayed_event::unstable::Response> {
+	let sender_user = identity.expect_sender_user()?;
+	// Only the user who scheduled it may read it: before, any logged-in user holding a delay_id
+	// got the event's room, type and content.
 	let data = services
 		.rooms
 		.delayed_events
-		.get_delayed_event(delay_id)
+		.get_delayed_event(delay_id, sender_user)
 		.await?;
 
 	Ok(data.into())

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use conduwuit::{
 	Err, Result, err,
 	matrix::pdu::{PartialPdu, sticky},
@@ -26,8 +26,10 @@ use crate::{Ruma, client_ip::ClientIp};
 pub(crate) async fn send_message_event_route(
 	State(services): State<crate::State>,
 	ClientIp(client_ip): ClientIp, // NOTE: required for updating device metadata
+	RawQuery(query): RawQuery,
 	body: Ruma<send_message_event::v3::Request>,
 ) -> Result<send_message_event::v3::Response> {
+	super::delayed_events::refuse_legacy_delay_parameter(query.as_deref())?;
 	let sender_user = body.identity.expect_sender_user()?;
 	let sender_device = body.identity.sender_device();
 

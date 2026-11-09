@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests;
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use conduwuit::{
 	Err, Result, err,
 	matrix::Event,
@@ -27,8 +27,10 @@ use crate::{Ruma, RumaResponse, client_ip::ClientIp};
 pub(crate) async fn send_state_event_for_key_route(
 	State(services): State<crate::State>,
 	ClientIp(ip): ClientIp, // NOTE: Required for updating device metadata
+	RawQuery(query): RawQuery,
 	body: Ruma<send_state_event::v3::Request>,
 ) -> Result<send_state_event::v3::Response> {
+	super::delayed_events::refuse_legacy_delay_parameter(query.as_deref())?;
 	let sender_user = body.identity.expect_sender_user()?;
 	services
 		.users
@@ -80,9 +82,10 @@ pub(crate) async fn send_state_event_for_key_route(
 pub(crate) async fn send_state_event_for_empty_key_route(
 	State(services): State<crate::State>,
 	ClientIp(ip): ClientIp, // NOTE: Required for updating device metadata
+	RawQuery(query): RawQuery,
 	body: Ruma<send_state_event::v3::Request>,
 ) -> Result<RumaResponse<send_state_event::v3::Response>> {
-	send_state_event_for_key_route(State(services), ClientIp(ip), body)
+	send_state_event_for_key_route(State(services), ClientIp(ip), RawQuery(query), body)
 		.boxed()
 		.await
 		.map(RumaResponse)
