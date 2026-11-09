@@ -380,12 +380,14 @@ impl Service {
 			preview_data.image_alt = None;
 			preview_data.image_height = None;
 			preview_data.image_width = None;
+			preview_data.image_size = None;
 		}
 		if preview_data.video.is_none() {
 			preview_data.video_type = None;
 			preview_data.video_alt = None;
 			preview_data.video_height = None;
 			preview_data.video_width = None;
+			preview_data.video_size = None;
 		}
 		if preview_data.audio.is_none() {
 			preview_data.audio_size = None;
